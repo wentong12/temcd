@@ -1,0 +1,248 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using Newtonsoft.Json;
+
+using System.Data.SqlClient;
+using System.Data.OracleClient;
+using System.IO;
+using System.Security.Principal;
+
+namespace ConsoleApplication1
+{
+    class Program
+    {
+
+        static public IEnumerable<object> DeserializeObjects(string input)
+        {
+            JsonSerializer serializer = new JsonSerializer();
+            using (var strreader = new StringReader(input))
+            {
+                using (var jsonreader = new JsonTextReader(strreader))
+                {
+                    jsonreader.SupportMultipleContent = true;
+                    while (jsonreader.Read())
+                    {
+                        yield return serializer.Deserialize(jsonreader);
+                    }
+                }
+            }
+        }
+
+
+        static void Main(string[] args)
+        {
+
+
+
+            StringBuilder log = new StringBuilder();
+            string filePath = @"C:\Users\ad_wentong\Documents\Visual Studio 2015\Projects\WebApplication3";
+            OracleConnection conn = new OracleConnection("DATA SOURCE = localhost:1521 / XE; USER ID = MYONLINEEDU; Password=oracle123");
+            conn.Open();
+
+
+
+
+
+
+            //string imagefolder = @"C:\Users\ad_wentong\Documents\cdupdatetest";
+            string imagefolder = @"\\datagroveraux2.ra.intel.com\ptd_lya_tem\rel\GigaTEM\pilot\data\dbcd";
+
+
+
+            using (WindowsImpersonationContext context = WindowsIdentity.Impersonate(IntPtr.Zero))
+            {
+
+
+
+                List<string> jsfiles = Directory.GetFiles(imagefolder, "published*", SearchOption.AllDirectories).
+             Select(f => new FileInfo(f)).
+             Where(f => f.LastWriteTime > DateTime.Now.AddMonths(-6)
+             & f.Name.EndsWith(".json") & !f.Name.Contains("cd_colors_map") & f.Name.Contains("published")
+             & f.Name.Contains("ROI") & f.Name.Contains("CDs") & f.Name.Contains("nm")).Select(f => f.FullName).ToList();
+
+
+                //& f.Name.EndsWith(".json") & !f.Name.Contains("cd_colors_map") & !f.Name.Contains("published")
+                //& f.Name.Contains("ROI") & f.Name.Contains("CDs") & f.Name.Contains("nm")).Select(f => f.Name).ToList();
+
+                //List<string> jsfiles = Directory.GetFiles(imagefolder, "*", SearchOption.AllDirectories).
+                //Select(f => new FileInfo(f)).Where(f => f.LastAccessTime < DateTime.Now.AddMonths(-3));
+
+                //.Where(f => f.LastAccessTime < DateTime.Now.AddMonths(-3)).ToList();
+
+
+
+
+                //Where(s => s.EndsWith(".json") & !s.Contains("cd_colors_map") & !s.Contains("published") 
+                //& s.Contains("ROI") & s.Contains("CDs") & s.Contains("nm")
+                //).ToList();
+
+
+                foreach (var jsfile in jsfiles)
+                {
+                    string jobidv = "";
+                    string siteidv = "";
+                    //string roiv = jsfile.Split(new string[] { "\\" }, StringSplitOptions.None).Last().Split('_')[1];
+                    //string fovv = jsfile.Split(new string[] { "\\" }, StringSplitOptions.None).Last().Split('_')[2].Replace("nm", "");
+                    //roi and fov are dummy
+                    string roiv = "1";
+                    string fovv = "500";
+                    Console.WriteLine(jsfile);
+                    DirectoryInfo sitefolder = System.IO.Directory.GetParent(jsfile);
+                    Console.WriteLine(sitefolder.Name.ToString());
+                    if (sitefolder.Name.ToString().Contains("-"))
+                    {
+                        jobidv = sitefolder.Name.ToString().Split('-')[0];
+                        siteidv = sitefolder.Name.ToString();
+                    }
+                    else if (sitefolder.Name.ToString().Contains("."))
+                    {
+                        jobidv = sitefolder.Name.ToString().Split('.')[0];
+                        siteidv = sitefolder.Name.ToString();
+                    }
+
+                    string json = System.IO.File.ReadAllText(jsfile);
+
+                    IEnumerable<dynamic> deserialized = DeserializeObjects(json);
+                    foreach (var jscomp in deserialized.First())
+                    {
+                        try
+                        {
+                            log.AppendLine("site is: " + siteidv);
+                            log.AppendLine("fov is " + fovv);
+                            log.AppendLine("roi is " + roiv);
+                            log.AppendLine("layer is: " + jscomp.layer.ToString());
+                            log.AppendLine("cd id: " + jscomp.id.ToString().Split('_')[1]);
+
+
+                            if (!jscomp.str.ToString().Contains("AUX") & !jscomp.str.ToString().Contains("REF")
+                                & !string.IsNullOrEmpty(jscomp.id.ToString().Split('_')[1])
+                                & !string.IsNullOrEmpty(jscomp.layer.ToString())
+                                & !string.IsNullOrEmpty(jscomp.updated_by.ToString())
+                                & !string.IsNullOrEmpty(jscomp.updated_at.ToString())
+                                & !string.IsNullOrEmpty(jscomp.str.ToString())
+                                & !string.IsNullOrEmpty(jscomp.x1.ToString())
+                                & !string.IsNullOrEmpty(jscomp.x2.ToString())
+                                & !string.IsNullOrEmpty(jscomp.y1.ToString())
+                                & !string.IsNullOrEmpty(jscomp.y2.ToString())
+                                )
+
+                            {
+
+
+                                string orcst = @"INSERT INTO cds2(
+                                                        ID,
+                                                        JOB_ID,
+                                                        SITE_ID,
+                                                        PUBLISHED,
+                                                        LAYER,
+                                                        UPDATED_BY,
+                                                        UPDATED_AT,
+                                                        IS_AUX,
+                                                        IS_REF,
+                                                        LENGTH_NM,
+                                                        X0,
+                                                        X1,
+                                                        Y0,
+                                                        Y1,
+                                                        PPM,
+                                                        roi,
+                                                        fov)
+                                                        VALUES(
+                                                        pID,
+                                                        JOB_ID_ph,
+                                                        SITE_ID_ph,
+                                                        PUBLISHED_ph,
+                                                        LAYER_ph,
+                                                        UPDATED_BY_ph,
+                                                        UPDATED_AT_ph,
+                                                        IS_AUX_ph,
+                                                        IS_REF_ph,
+                                                        LENGTH_NM_ph,
+                                                        X0_ph,
+                                                        X1_ph,
+                                                        Y0_ph,
+                                                        Y1_ph,
+                                                        PPM_ph,
+                                                        roi_ph,
+                                                        fov_ph
+                                                        )";
+
+
+
+
+                                StringBuilder sql = new StringBuilder(orcst);
+
+
+                                string idv = jscomp.id.ToString().Split('_')[1];
+
+
+
+                                string publishedv = "Y";
+                                string layerv = jscomp.layer;
+
+
+                                string upadted_byv = jscomp.updated_by;
+
+                                string updated_atv = jscomp.updated_at.ToString();
+                                string isauxv = "N";
+                                string isrefv = "N";
+
+
+                                float length_nmv = float.Parse(jscomp.str.ToString());
+                                int x0v = (int)(jscomp.x1);
+                                int x1v = (int)(jscomp.x2);
+                                int y0v = (int)(jscomp.y1);
+                                int y1v = (int)(jscomp.y2);
+                                float ppm = jscomp.ppm;
+
+                                sql.Replace("pID", idv);
+                                sql.Replace("JOB_ID_ph", "'" + jobidv + "'");
+                                sql.Replace("SITE_ID_ph", "'" + siteidv + "'");
+                                sql.Replace("PUBLISHED_ph", "'" + publishedv + "'");
+                                sql.Replace("LAYER_ph", "'" + layerv + "'");
+                                sql.Replace("UPDATED_BY_ph", "'" + upadted_byv + "'");
+                                sql.Replace("UPDATED_AT_ph", "TO_TIMESTAMP(" + "'" + updated_atv + "'" + "," + "'" + "MM/DD/YYYY HH12:MI:SS.FF6 AM" + "'" + ")");
+                                sql.Replace("IS_AUX_ph", "'" + isauxv + "'");
+                                sql.Replace("IS_REF_ph", "'" + isrefv + "'");
+                                sql.Replace("LENGTH_NM_ph", length_nmv.ToString());
+                                sql.Replace("X0_ph", x0v.ToString());
+                                sql.Replace("X1_ph", x1v.ToString());
+                                sql.Replace("Y0_ph", y0v.ToString());
+                                sql.Replace("Y1_ph", y1v.ToString());
+                                sql.Replace("PPM_ph", ppm.ToString());
+                                sql.Replace("roi_ph", roiv);
+                                sql.Replace("fov_ph", fovv);
+                                string sqlstr = sql.ToString();
+
+                                OracleCommand cmd = new OracleCommand(sqlstr, conn);
+                                Int32 recordsAffected = cmd.ExecuteNonQuery();
+
+                                Console.WriteLine("sql is quried");
+
+                                log.Clear();
+                            }
+                        }
+
+                        catch (Exception e)
+                        {
+                            log.AppendLine(e.Message);
+                            Console.WriteLine(log);
+                            File.AppendAllText(filePath + "log.txt", log.ToString());
+                            Console.WriteLine("log is written");
+                            log.Clear();
+                            continue;
+
+                        }
+                    }
+                }
+            }
+
+        }  
+
+
+    
+    }
+}
